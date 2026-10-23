@@ -1,0 +1,7 @@
+.venv/
+jobs/
+__pycache__/
+*.mp4
+models/
+.pytest_cache/
+.DS_Store

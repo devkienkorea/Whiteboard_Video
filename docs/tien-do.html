@@ -1,0 +1,195 @@
+<title>Tiến độ Whiteboard Video</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Itim&family=Be+Vietnam+Pro:wght@400;500;600&display=swap">
+<style>
+/* Layout: một cột như tờ giấy trên bảng trắng — tóm tắt tiến độ trên cùng, rồi các giai đoạn theo đúng thứ tự plan */
+:root {
+  --paper: #f7f6f1;
+  --card: #ffffff;
+  --ink: #23262b;
+  --muted: #6b6f76;
+  --line: #e3e1d8;
+  --marker: #ffd600;
+  --marker-soft: #fff4b0;
+  --doing: #2f6fd6;
+  --done: #2e8b57;
+  --todo: #9a9ea6;
+  --you: #b4532a;
+  --display: "Itim", "Chalkboard SE", "Comic Sans MS", cursive;
+  --body: "Be Vietnam Pro", -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #1d2422; --card: #253030; --ink: #eef1ec; --muted: #a3ada8; --line: #36433f;
+    --marker: #ffd84d; --marker-soft: #4a4420; --doing: #7aa7ff; --done: #6fcf97; --todo: #7d8783; --you: #f0a37c;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #1d2422; --card: #253030; --ink: #eef1ec; --muted: #a3ada8; --line: #36433f;
+  --marker: #ffd84d; --marker-soft: #4a4420; --doing: #7aa7ff; --done: #6fcf97; --todo: #7d8783; --you: #f0a37c;
+  color-scheme: dark;
+}
+body { background: var(--paper); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 860px; margin: 0 auto; padding-block: 32px 64px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  display: flex; flex-direction: column; gap: 28px; }
+h1 { font-family: var(--display); font-weight: 400; font-size: clamp(30px, 6vw, 44px); line-height: 1.15; margin: 0; text-wrap: balance; }
+h1 mark { background: linear-gradient(transparent 55%, var(--marker) 55%, var(--marker) 92%, transparent 92%); color: inherit; padding: 0 4px; }
+.lede { color: var(--muted); margin: 8px 0 0; max-width: 62ch; }
+.summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.stat { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.stat b { display: block; font-family: var(--display); font-weight: 400; font-size: 30px; line-height: 1.1; font-variant-numeric: tabular-nums; }
+.stat span { color: var(--muted); font-size: 13px; }
+.bar { height: 10px; border-radius: 99px; background: var(--line); overflow: hidden; margin-top: 10px; }
+.bar i { display: block; height: 100%; background: var(--done); width: 0; transition: width .4s ease; }
+.filters { display: flex; flex-wrap: wrap; gap: 8px; }
+.filters button { font: inherit; font-size: 14px; border: 1px solid var(--line); background: var(--card); color: var(--ink);
+  border-radius: 99px; padding: 6px 14px; cursor: pointer; }
+.filters button[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+.filters button:focus-visible, .status:focus-visible { outline: 2px solid var(--doing); outline-offset: 2px; }
+.phase { display: flex; flex-direction: column; gap: 10px; }
+.phase-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+.phase h2 { font-family: var(--display); font-weight: 400; font-size: 24px; margin: 0; }
+.phase-head small { color: var(--muted); font-variant-numeric: tabular-nums; }
+.tasks { list-style: none; margin: 0; padding: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; }
+.task { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; padding: 14px 16px; border-top: 1px solid var(--line); }
+.task:first-child { border-top: 0; }
+.task > div { min-width: 0; }
+.task h3 { font-size: 15px; font-weight: 600; margin: 0; }
+.task[data-status="done"] h3 { color: var(--muted); text-decoration: line-through; text-decoration-color: var(--done); }
+.task p { margin: 2px 0 0; color: var(--muted); font-size: 14px; }
+.meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip { font-size: 12px; border-radius: 99px; padding: 2px 9px; border: 1px solid var(--line); color: var(--muted); }
+.chip.you { color: var(--you); border-color: currentColor; }
+.status { font: inherit; font-size: 13px; font-weight: 600; width: 104px; text-align: center; border-radius: 8px; padding: 6px 0;
+  border: 1.5px solid currentColor; background: transparent; cursor: pointer; align-self: start; }
+.status[disabled] { cursor: default; }
+.status.todo { color: var(--todo); }
+.status.doing { color: var(--doing); background: color-mix(in srgb, var(--doing) 10%, transparent); }
+.status.done { color: var(--done); background: color-mix(in srgb, var(--done) 12%, transparent); }
+.note { background: var(--marker-soft); border-radius: 10px; padding: 14px 16px; font-size: 14px; }
+.empty { background: var(--card); border: 1px dashed var(--line); border-radius: 10px; padding: 24px; color: var(--muted); }
+code { font-size: 13px; background: color-mix(in srgb, var(--ink) 7%, transparent); padding: 1px 5px; border-radius: 4px; word-break: break-word; }
+@media (max-width: 480px) { .task { grid-template-columns: 1fr; } .status { width: auto; padding: 6px 14px; justify-self: start; } }
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Tiến độ <mark>Whiteboard Video</mark></h1>
+    <p class="lede">Pipeline local trên Mac biến 1 chủ đề thành video TikTok vẽ tay giọng Việt. Danh sách theo plan gốc (giai đoạn 1–7), cập nhật sau mỗi phiên làm việc. Bấm vào trạng thái để chuyển Chưa làm → Đang làm → Xong.</p>
+  </header>
+
+  <section class="summary" aria-label="Tóm tắt">
+    <div class="stat"><b id="s-pct">–</b><span>hoàn thành</span><div class="bar"><i id="s-bar"></i></div></div>
+    <div class="stat"><b id="s-left">–</b><span>việc còn lại</span></div>
+    <div class="stat"><b id="s-claude">–</b><span>việc của Claude</span></div>
+    <div class="stat"><b id="s-you">–</b><span>việc của bạn</span></div>
+  </section>
+
+  <div class="filters" role="group" aria-label="Lọc">
+    <button id="f-left" data-f="left" aria-pressed="true">Còn lại</button>
+    <button id="f-you" data-f="you" aria-pressed="false">Việc của bạn</button>
+    <button id="f-all" data-f="all" aria-pressed="false">Tất cả</button>
+  </div>
+
+  <main id="list">
+    <div class="empty">Đang tải danh sách việc… Nếu trang trống, danh sách chưa được ghi vào: nhờ Claude cập nhật tiến độ.</div>
+  </main>
+
+  <p class="note" id="foot">Mỗi phiên Claude đọc <code>PROGRESS.md</code> trong dự án, làm việc, rồi cập nhật cả file đó lẫn trang này.</p>
+</div>
+
+<script>
+const PHASES = [
+  ["1-render", "Giai đoạn 1 · Lõi render"],
+  ["2-audio", "Giai đoạn 2 · Âm thanh"],
+  ["3-image", "Giai đoạn 3 · Sinh ảnh"],
+  ["4-script", "Giai đoạn 4 · Kịch bản"],
+  ["5-orchestrator", "Giai đoạn 5 · Ghép tự động"],
+  ["6-upgrade", "Giai đoạn 6 · Nâng cấp"],
+  ["7-finish", "Bước 7 · Hoàn thiện cho TikTok"],
+  ["8-quality", "Sau plan · Chất lượng & vận hành"],
+];
+const LABEL = { todo: "Chưa làm", doing: "Đang làm", done: "Xong" };
+const NEXT = { todo: "doing", doing: "done", done: "todo" };
+let tasks = [], filter = "left", db = null, canWrite = false;
+
+try { filter = localStorage.getItem("tien-do-filter") || "left"; } catch (e) {}
+
+function el(tag, cls, text) { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
+
+function render() {
+  const total = tasks.length, done = tasks.filter(t => t.status === "done").length;
+  const left = tasks.filter(t => t.status !== "done");
+  document.getElementById("s-pct").textContent = total ? Math.round(done / total * 100) + "%" : "–";
+  document.getElementById("s-bar").style.width = total ? (done / total * 100) + "%" : "0";
+  document.getElementById("s-left").textContent = total ? left.length : "–";
+  document.getElementById("s-claude").textContent = total ? left.filter(t => t.owner === "claude").length : "–";
+  document.getElementById("s-you").textContent = total ? left.filter(t => t.owner === "ban").length : "–";
+  document.querySelectorAll(".filters button").forEach(b => b.setAttribute("aria-pressed", String(b.dataset.f === filter)));
+
+  const list = document.getElementById("list");
+  list.replaceChildren();
+  if (!total) { list.append(el("div", "empty", "Chưa có việc nào trong danh sách. Nhờ Claude ghi tiến độ vào trang này.")); return; }
+  const shown = tasks.filter(t => filter === "all" || (t.status !== "done" && (filter === "left" || t.owner === "ban")));
+  if (!shown.length) { list.append(el("div", "empty", filter === "you" ? "Bạn không còn việc nào. 🎉" : "Đã xong hết mọi việc.")); return; }
+
+  const wrap = el("div"); wrap.style.cssText = "display:flex;flex-direction:column;gap:24px";
+  for (const [pid, pname] of PHASES) {
+    const items = shown.filter(t => t.phase === pid).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+    if (!items.length) continue;
+    const all = tasks.filter(t => t.phase === pid);
+    const sec = el("section", "phase");
+    const head = el("div", "phase-head");
+    head.append(el("h2", null, pname), el("small", null, `${all.filter(t => t.status === "done").length}/${all.length} xong`));
+    const ul = el("ul", "tasks");
+    for (const t of items) {
+      const li = el("li", "task"); li.dataset.status = t.status;
+      const btn = el("button", "status " + t.status, LABEL[t.status] || t.status);
+      btn.id = "st-" + t.id;
+      btn.disabled = !canWrite;
+      btn.title = canWrite ? "Bấm để chuyển sang: " + LABEL[NEXT[t.status]] : "Chỉ xem";
+      btn.addEventListener("click", () => cycle(t));
+      const body = el("div");
+      body.append(el("h3", null, t.title));
+      if (t.detail) body.append(el("p", null, t.detail));
+      const meta = el("div", "meta");
+      meta.append(el("span", "chip" + (t.owner === "ban" ? " you" : ""), t.owner === "ban" ? "Bạn làm" : "Claude làm"));
+      if (t.done_at && t.status === "done") meta.append(el("span", "chip", "xong " + t.done_at));
+      body.append(meta);
+      li.append(btn, body); ul.append(li);
+    }
+    sec.append(head, ul); wrap.append(sec);
+  }
+  list.append(wrap);
+}
+
+async function cycle(t) {
+  if (!db || !canWrite) return;
+  const status = NEXT[t.status];
+  const patch = { status, updated_at: new Date().toISOString() };
+  if (status === "done") patch.done_at = new Date().toISOString().slice(0, 10);
+  try { await db.doc("tasks/" + t.id).update(patch); }
+  catch (e) { if (e && e.code === "invalid_argument") { canWrite = false; render(); } }
+}
+
+document.querySelectorAll(".filters button").forEach(b => b.addEventListener("click", () => {
+  filter = b.dataset.f;
+  try { localStorage.setItem("tien-do-filter", filter); } catch (e) {}
+  render();
+}));
+
+(async () => {
+  db = await window.claude?.use?.("db");
+  if (!db) { document.getElementById("list").replaceChildren(el("div", "empty", "Không tải được dữ liệu tiến độ ở chế độ xem này. Mở trang trên claude.ai khi đã đăng nhập.")); return; }
+  const user = await window.claude.use("user");
+  const can = user ? await user.can("data.write") : null;
+  canWrite = can !== false;
+  db.collection("tasks").onSnapshot(snap => {
+    tasks = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    render();
+  }, () => { document.getElementById("list").replaceChildren(el("div", "empty", "Mất kết nối tới dữ liệu tiến độ. Tải lại trang để thử lại.")); });
+})();
+</script>
