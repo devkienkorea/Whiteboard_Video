@@ -8,7 +8,7 @@ Kế hoạch đầy đủ: 7 bước (kịch bản LLM → TTS → whisper → s
 - `pipeline/render.py` — bàn tay vẽ nét, tô màu từng vật thể → MP4 1080x1920
 - `make_video.py` — chạy trọn: chủ đề → kịch bản → ảnh → từng cảnh → `final.mp4`
 - `pipeline/script_llm.py` — Qwen3.6-35B-A3B (mlx-lm, 4-bit) viết `script.json`: lời thoại, prompt ảnh tiếng Anh, cue từng cảnh
-- `pipeline/tts.py` — đọc tiếng Việt offline: VieNeu-TTS v3 Turbo (mặc định, 25 giọng, 48kHz), Piper, hoặc giọng macOS "Linh"; tự đổi số/% thành chữ
+- `pipeline/tts.py` — đọc tiếng Việt offline: VieNeu-TTS v3 Turbo (mặc định, 25 giọng, 48kHz), Piper, hoặc giọng macOS "Linh"; tự đổi số/%/đơn vị (°C, km, kg…) thành chữ
 - `pipeline/align.py` — mlx-whisper lấy mốc thời gian từng từ, khớp với kịch bản → `words.json`, `subs.srt`
 - `pipeline/scene.py` — chạy trọn 1 cảnh từ `scene.json`: tách nét → giọng đọc → whisper → vẽ từng vật thể đúng lúc được nhắc → MP4 có tiếng
 - `pipeline/image_gen.py` — sinh doodle bằng FLUX.2 Klein 4B (mặc định) hoặc Z-Image-Turbo (mflux, 4-bit), mỗi mô tả vài seed, giữ ảnh điểm cao nhất

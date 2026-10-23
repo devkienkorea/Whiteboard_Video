@@ -29,6 +29,10 @@ DEFAULT_VOICE = {"vieneu": "Ngọc Huyền", "piper": "vi_VN-vais1000-medium", "
 
 DIGITS = ["không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín"]
 UNITS = [(10**9, "tỷ"), (10**6, "triệu"), (1000, "nghìn")]
+# ký hiệu đơn vị đứng sau số → chữ (VieNeu đọc "độ C" đúng, phụ đề vẫn dễ đọc)
+MEASURES = {"°C": "độ C", "°F": "độ F", "°": "độ", "km/h": "ki-lô-mét một giờ", "km": "ki-lô-mét",
+            "cm": "xen-ti-mét", "mm": "mi-li-mét", "kg": "ki-lô-gam", "mg": "mi-li-gam", "ml": "mi-li-lít"}
+MEASURE_RE = re.compile(r"(\d)\s*(" + "|".join(re.escape(u) for u in MEASURES) + r")(?![\w/])")
 
 
 def _below_1000(n, full):
@@ -73,6 +77,7 @@ def number_to_words(n):
 def normalize(text):
     """Đổi số, %, ký hiệu thành chữ để TTS đọc đúng."""
     text = re.sub(r"(\d+)\s*%", lambda m: m.group(1) + " phần trăm", text)
+    text = MEASURE_RE.sub(lambda m: f"{m.group(1)} {MEASURES[m.group(2)]}", text)
     # 1.000.000 → 1000000 (dấu chấm phân cách hàng nghìn kiểu Việt)
     text = re.sub(r"\d{1,3}(?:\.\d{3})+(?!\d)", lambda m: m.group(0).replace(".", ""), text)
     text = re.sub(r"(\d+),(\d+)", lambda m: f"{number_to_words(int(m.group(1)))} phẩy {number_to_words(int(m.group(2)))}", text)

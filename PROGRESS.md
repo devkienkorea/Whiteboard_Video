@@ -22,6 +22,7 @@ Pipeline 7 bước đã chạy trọn đầu–cuối, gồm cả phụ đề ka
 - [x] **Chữ on-screen** (2026-10-23): `script_llm` thêm `on_screen_text` (≤5 từ, có kiểm tra), `scene.json` → `text`, `render.text_layer()` + bước `write` trong timeline (tay viết trái→phải trước khi vẽ hình). UI thêm cột + đánh dấu cảnh cũ khi đổi chữ. Đã kiểm khung hình: chữ to, cân 2 dòng, không đè hình/phụ đề. Chạy trọn chủ đề mới "Vì sao nên đi bộ 30 phút mỗi ngày" (13 phút, 7 cảnh): LLM viết chữ hợp lý cả 7 cảnh.
 - [x] **Chuyển cảnh** (2026-10-23): `concat()` dùng `xfade=slideleft` 0.4s; tiếng cắt 0.4s lặng cuối cảnh trước thay vì crossfade. Đã kiểm: thời lượng = tổng cảnh − 6×0.4s, lệch tiếng 21ms. Đã xuất lại video "đi bộ" + "3 mẹo" (bỏ nhạc test).
 - [x] **Git + test lõi** (2026-10-23): `git init` (bỏ `jobs/`, `models/`, `*.mp4`), `tests/` 28 test pytest ~3s không nạp model: align/find_cue/chunk/SRT, validate kịch bản, wrap + Karaoke, số → chữ, `ui.scene_state`. Chạy: `.venv/bin/python -m pytest -q`.
+- [x] **TTS đọc đơn vị** (2026-10-23): `tts.MEASURES` — sau số: °C/°F/°, km/h, km, cm, mm, kg, mg, ml → chữ ("độ C", "ki-lô-mét"…). Không có số đứng trước thì giữ nguyên. Đã nghe thử VieNeu + whisper: đọc đúng "độ C". Chưa làm m, g, l (dễ nhầm, vd. 5G, 1m70).
 - [x] Video đã làm: `jobs/tai-sao-nen-uong-mot-coc-nuoc-ngay-khi-thuc-day/`, `jobs/3-meo-ngu-ngon-hon-moi-dem/`, `jobs/vi-sao-nen-di-bo-30-phut-moi-ngay/`
 
 ## Quyết định quan trọng (và lý do)
@@ -48,5 +49,4 @@ Danh sách đầy đủ + trạng thái: https://claude.ai/artifact/Y75QUxinA8UC
 - [ ] Config YAML (plan giai đoạn 5) — chưa làm; cân nhắc có cần không vì đã có CLI + UI
 
 ## Vấn đề đã biết
-- `tts.normalize("25°C")` → "hai mươi lăm°C": chưa đọc ký hiệu °C/°, km, kg… (LLM có thể viết vào narration).
 - Plan gốc: `~/.claude/plans/t-i-mu-n-l-n-wondrous-twilight.md`
