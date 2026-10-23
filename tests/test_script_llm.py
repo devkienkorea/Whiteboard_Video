@@ -51,3 +51,16 @@ def test_so_vat_the():
 
 def test_sai_so_canh():
     assert check([]) and check([scene()] * 4)
+
+
+def test_bat_tieng_anh_dinh_vao_tu_viet():
+    assert sl.glued_words("Ngủ trưa giúp não bộrefresh, nghiêng người, khuỷu tay, quyển sách, 25°C, video") == ["bộrefresh,"]
+    errors = check([scene(narration=NAR.replace("tỉnh táo", "tỉnh táorefresh"))])
+    assert len(errors) == 1 and "bộrefresh" not in errors[0] and "táorefresh" in errors[0]
+
+
+def test_cue_qua_sat_nhau():
+    sc = scene(narration="Uống cốc nước cạnh đồng hồ mỗi sáng để cơ thể tỉnh táo và khoẻ mạnh hơn nhé.",
+               elements=[{"cue": "cốc nước", "object": "glass of water"}, {"cue": "đồng hồ", "object": "alarm clock"}])
+    errors = check([sc])
+    assert len(errors) == 1 and "cách nhau 3 từ" in errors[0]

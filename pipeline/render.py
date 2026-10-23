@@ -206,7 +206,7 @@ def build_timeline(meta, draw_speed, travel_speed, color_time, W, H, text_lines=
     return groups, ("travel", 0.5, (pen, offscreen))
 
 
-def schedule(groups, starts, end=None, min_factor=0.3):
+def schedule(groups, starts, end=None, min_factor=0.15):
     """Đặt mỗi vật thể bắt đầu đúng mốc starts[i] (giây, None = ngay sau vật trước).
     Vẽ không kịp trước mốc kế tiếp thì tăng tốc (tối đa 1/min_factor lần), dư thời gian thì tay chờ."""
     out, t = [], 0.0

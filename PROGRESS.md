@@ -24,6 +24,8 @@ Pipeline 7 bước đã chạy trọn đầu–cuối, gồm cả phụ đề ka
 - [x] **Git + test lõi** (2026-10-23): `git init` (bỏ `jobs/`, `models/`, `*.mp4`), `tests/` 28 test pytest ~3s không nạp model: align/find_cue/chunk/SRT, validate kịch bản, wrap + Karaoke, số → chữ, `ui.scene_state`. Chạy: `.venv/bin/python -m pytest -q`.
 - [x] **TTS đọc đơn vị** (2026-10-23): `tts.MEASURES` — sau số: °C/°F/°, km/h, km, cm, mm, kg, mg, ml → chữ ("độ C", "ki-lô-mét"…). Không có số đứng trước thì giữ nguyên. Đã nghe thử VieNeu + whisper: đọc đúng "độ C". Chưa làm m, g, l (dễ nhầm, vd. 5G, 1m70).
 - [x] **Nhiều vật thể / cue trong 1 cảnh** (2026-10-23): kịch bản có `elements: [{cue, object}]` (1–3, đủ mọi vật thể vẽ ra). `pipeline/locate.py`: Qwen3.6 nhìn ảnh (mlx-vlm, cùng model, không tải thêm) khoanh khung → `scene_XX/regions.json` (cache theo ảnh + tên vật thể), chạy trong `build_scenes` trước khi dựng. `strokes.extract(regions=)`: mỗi nét skeleton theo khung chứa phần lớn điểm của nó, khung nhỏ thắng khi chồng nhau, màu theo mảng liền. UI cột "Vật thể: cụm từ = tên tiếng Anh; …". Kịch bản cũ (`cue`) chạy như trước. Đã chạy trọn "Vì sao nên ngủ trưa 20 phút": 12/12 vật thể định vị được, thêm ~20s/video.
+- [x] **Bắt tiếng Anh dính vào lời + cue quá sát** (2026-10-23): `script_llm.glued_words()` — từ có dấu tiếng Việt mà không phải 1 âm tiết (regex `SYLLABLE`) → lỗi, LLM viết lại. `validate` bắt 2 cue liên tiếp cách < `CUE_GAP`=4 từ (prompt cũng dặn). Quét 540 từ kịch bản cũ: 0 báo nhầm.
+- [x] **Cảnh ngắn vẽ trễ lời** (2026-10-23): `render.schedule` cho tăng tốc tới 6.7x (`min_factor` 0.3 → 0.15). Đo trên 4 video cũ: trễ tệ nhất 2.1s → 0.9s (cảnh còn lại có cue cách 3 từ — luật CUE_GAP chặn từ kịch bản mới). Video cũ chưa render lại.
 - [x] Video đã làm: `jobs/tai-sao-nen-uong-mot-coc-nuoc-ngay-khi-thuc-day/`, `jobs/3-meo-ngu-ngon-hon-moi-dem/`, `jobs/vi-sao-nen-di-bo-30-phut-moi-ngay/`, `jobs/vi-sao-nen-ngu-trua-20-phut/`
 
 ## Quyết định quan trọng (và lý do)
@@ -32,6 +34,7 @@ Pipeline 7 bước đã chạy trọn đầu–cuối, gồm cả phụ đề ka
 - FLUX.2 Klein 4B làm model ảnh mặc định: nhanh hơn ~3x Z-Image (52s vs 169s/ảnh), hiểu prompt tốt hơn.
 - Model VieNeu đặt ở `models/` chứ không ở cache HF: onnxruntime 1.31 chặn file `.data` sau symlink.
 - Mỗi bước nặng chạy tiến trình con: giải phóng model trong cùng tiến trình vẫn giữ ~10GB RAM.
+- Chỉ bắt tiếng Anh *dính* vào chữ có dấu, không bắt từ tiếng Anh đứng riêng: "video", "calo", "endorphin" có trong 3/4 kịch bản cũ, bắt hết thì LLM phải viết lại liên tục.
 - Phụ đề vẽ bằng PIL trong render, không dùng ASS: ffmpeg Homebrew không có libass/drawtext. Đổi kiểu phụ đề → phải render lại cảnh.
 - Phụ đề đặt giữa ~76.5% chiều cao (hình chiếm 10–72%), lề 12% hai bên, font Arial Bold hệ thống.
 - Web UI không có database: trạng thái cảnh suy ra từ file (`image.png`, `scene.json`, `scene.mp4` + mtime) → UI và CLI không bao giờ lệch nhau.
@@ -53,6 +56,6 @@ Danh sách đầy đủ + trạng thái: https://claude.ai/artifact/Y75QUxinA8UC
 
 ## Vấn đề đã biết
 - Vật thể không có trong `elements` → nét của nó bị chia theo khung gần nhất (đã ép prompt liệt kê đủ). Vật thể ôm/chồng nhau (bộ xương ôm đồng hồ) chia chưa sắc.
-- Cảnh ngắn (~4s) mà 3 vật thể: vật đầu vẽ lâu nên vật sau trễ lời ~1–1.5s.
-- LLM thỉnh thoảng chèn tiếng Anh dính vào lời thoại ("não bộrefresh") — validate chưa bắt.
+- Đầu cảnh tay bay từ ngoài khung vào mất ~0.4–0.7s nên nét đầu chạm giấy trễ lời chừng đó.
+- Từ tiếng Anh đứng riêng ("stress", "video") vẫn lọt qua validate.
 - Plan gốc: `~/.claude/plans/t-i-mu-n-l-n-wondrous-twilight.md`

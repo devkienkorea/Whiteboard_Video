@@ -23,6 +23,11 @@ import unicodedata
 from pathlib import Path
 
 LLM_MODEL = "mlx-community/Qwen3.6-35B-A3B-4bit"
+CUE_GAP = 4  # số từ tối thiểu giữa 2 cue liên tiếp (~1.5s đọc) — sát hơn thì vật sau vẽ trễ lời
+
+# 1 âm tiết tiếng Việt: phụ âm đầu + 1–3 nguyên âm + phụ âm cuối
+_V = "aàáảãạăằắẳẵặâầấẩẫậeèéẻẽẹêềếểễệiìíỉĩịoòóỏõọôồốổỗộơờớởỡợuùúủũụưừứửữựyỳýỷỹỵ"
+SYLLABLE = re.compile(rf"(ngh|ng|nh|ch|gh|gi|kh|ph|qu|th|tr|[bcdđghklmnprstvx])?[{_V}]{{1,3}}(ch|ng|nh|[cmnpt])?")
 
 SYSTEM = """Bạn là biên kịch video TikTok dạng vẽ tay trên bảng trắng (whiteboard animation), giọng đọc tiếng Việt.
 Viết kịch bản ngắn gọn, dễ hiểu, lôi cuốn, đúng sự thật, cho người Việt xem trên điện thoại."""
@@ -33,7 +38,8 @@ Yêu cầu:
 - {n_min} đến {n_max} cảnh, tổng {w_min}–{w_max} từ (khoảng {sec_min}–{sec_max} giây đọc).
 - Cảnh 1 là câu "hook" gây tò mò trong 3 giây đầu (câu hỏi hoặc sự thật bất ngờ).
 - Cảnh cuối chốt ý chính + kêu gọi hành động ngắn (theo dõi, lưu lại, thử ngay...).
-- Mỗi cảnh: "narration" 1–2 câu, 12–35 từ, văn nói tự nhiên, không emoji, không hashtag, không ký hiệu lạ.
+- Mỗi cảnh: "narration" 1–2 câu, 12–35 từ, văn nói tự nhiên, không emoji, không hashtag, không ký hiệu lạ,
+  không chèn từ tiếng Anh.
 - Mỗi cảnh: "image_subject" bằng TIẾNG ANH, mô tả MỘT hình minh hoạ đơn giản vẽ được bằng bút dạ
   (tối đa 3 vật thể cụ thể, có thể là người hoặc đồ vật; KHÔNG có chữ, số, biểu đồ, giao diện, bản đồ).
   Ví dụ tốt: "a smiling woman drinking a glass of water next to an alarm clock".
@@ -41,7 +47,8 @@ Yêu cầu:
   không thêm thứ không vẽ được (nơi chốn, cảm xúc), theo thứ tự được nhắc trong narration. Mỗi vật thể:
   "cue" là cụm 1–4 từ COPY NGUYÊN VĂN từ narration của chính cảnh đó, nói tới vật thể này
   (vật thể sẽ được vẽ đúng lúc giọng đọc nói tới cụm này); "object" là tên vật thể bằng tiếng Anh,
-  COPY NGUYÊN VĂN từ image_subject (vd. "woman", "glass of water", "alarm clock"). Các cue khác nhau.
+  COPY NGUYÊN VĂN từ image_subject (vd. "woman", "glass of water", "alarm clock"). Các cue khác nhau,
+  cue sau cách cue trước ít nhất {cue_gap} từ (để kịp vẽ); câu ngắn thì ít vật thể thôi.
 - Mỗi cảnh: "on_screen_text" là chữ viết lên bảng, 1–5 từ tiếng Việt tóm ý chính hoặc con số đáng nhớ
   (vd. "Ngủ đủ 8 tiếng", "25°C"), KHÔNG chép nguyên câu narration; để "" nếu cảnh không cần chữ.
 - "title": tiêu đề video ngắn, dưới 60 ký tự.
@@ -64,6 +71,12 @@ def phrase_index(text, phrase):
 
 def contains_phrase(text, phrase):
     return phrase_index(text, phrase) >= 0
+
+
+def glued_words(text):
+    """Từ có dấu tiếng Việt nhưng không phải 1 âm tiết — thường là LLM dính tiếng Anh vào (vd. "bộrefresh")."""
+    return [w for w in text.split()
+            if re.search(r"[À-ỹđĐ]", w) and not SYLLABLE.fullmatch(re.sub(r"[^\w]", "", w.lower()))]
 
 
 def extract_json(text):
@@ -97,6 +110,8 @@ def validate(script, n_min, n_max, w_min, w_max):
         words += n
         if not 8 <= n <= 45:
             errors.append(f"cảnh {i}: narration có {n} từ, cần 12–35")
+        if glued := glued_words(nar):
+            errors.append(f"cảnh {i}: narration có từ dính tiếng Anh {glued}, viết lại bằng tiếng Việt")
         if not subj or re.search(r"[À-ỹđĐ]", subj):
             errors.append(f"cảnh {i}: image_subject phải là tiếng Anh, không rỗng")
         if len(text.split()) > 6 or len(text) > 32:
@@ -106,6 +121,11 @@ def validate(script, n_min, n_max, w_min, w_max):
                 errors.append(f"cảnh {i}: cue '{e['cue']}' không có nguyên văn trong narration")
             if not contains_phrase(subj, e["object"]):
                 errors.append(f"cảnh {i}: object '{e['object']}' không có nguyên văn trong image_subject")
+        for a, b in zip(sc["elements"], sc["elements"][1:]):
+            ia, ib = phrase_index(nar, a["cue"]), phrase_index(nar, b["cue"])
+            if ia >= 0 and ib >= 0 and ib - ia < CUE_GAP:
+                errors.append(f"cảnh {i}: cue '{a['cue']}' và '{b['cue']}' cách nhau {ib - ia} từ, cần ≥{CUE_GAP}"
+                              " — bớt vật thể hoặc chọn cue xa nhau hơn")
     if not (w_min * 0.8 <= words <= w_max * 1.2):
         errors.append(f"tổng {words} từ, cần {w_min}–{w_max}")
     return errors
@@ -133,7 +153,8 @@ class ScriptWriter:
         messages = [
             {"role": "system", "content": SYSTEM},
             {"role": "user", "content": INSTRUCTIONS.format(topic=topic, n_min=n_min, n_max=n_max, w_min=w_min,
-                                                            w_max=w_max, sec_min=seconds[0], sec_max=seconds[1])},
+                                                            w_max=w_max, sec_min=seconds[0], sec_max=seconds[1],
+                                                            cue_gap=CUE_GAP)},
         ]
         last_err = None
         for attempt in range(1, retries + 1):
