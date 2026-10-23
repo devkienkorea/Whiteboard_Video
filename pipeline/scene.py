@@ -5,6 +5,8 @@ scene.json:
   "image": "sample.png",                      # đường dẫn tương đối theo file scene.json
   "narration": "Ngày xưa có một đám mây ...",
   "cues": ["đám mây", "mặt trời", "ngôi nhà"], # cụm từ kích hoạt từng vật thể, theo thứ tự trong strokes.json
+  "regions": [[0.1, 0.0, 0.5, 0.3], null, ...], # (tuỳ chọn) khung từng vật thể [x0, y0, x1, y1] tỉ lệ theo ảnh,
+                                              # song song với cues → tách nét theo vật thể; null = không định vị được
   "text": "Ngủ đủ 8 tiếng",                   # (tuỳ chọn) chữ viết tay đầu cảnh, hình thu nhỏ xuống nhường chỗ
   "tts": {"engine": "vieneu", "voice": "Ngọc Huyền", "speed": 1.0}
 }
@@ -38,14 +40,22 @@ def run(scene_path, lead=LEAD):
         print(f"  [{now - clock:5.1f}s] {msg}")
         clock = now
 
-    # 1. tách nét (bỏ qua nếu ảnh và vùng đặt hình chưa đổi → giữ được thứ tự vẽ đã sửa tay)
+    # 1. tách nét (bỏ qua nếu ảnh, vùng đặt hình và khung vật thể chưa đổi → giữ được thứ tự vẽ đã sửa tay)
     image = (job / sc["image"]).resolve()
     meta_path = job / "strokes.json"
     text = sc.get("text", "").strip()
     box = list(BOX_WITH_TEXT if text else BOX)
-    if (not meta_path.exists() or meta_path.stat().st_mtime < image.stat().st_mtime
-            or json.loads(meta_path.read_text()).get("box", list(BOX)) != box):
-        color, ink, labels, meta = strokes.extract(cv2.imread(str(image), cv2.IMREAD_UNCHANGED), box=box)
+    cues = sc.get("cues", [])
+    found = [(c, r) for c, r in zip(cues, sc.get("regions") or []) if r]
+    regions = [r for _, r in found] or None
+    if regions:  # vật thể không định vị được: bỏ cue, nét của nó theo khung gần nhất
+        cues = [c for c, _ in found]
+    old = json.loads(meta_path.read_text()) if meta_path.exists() else {}
+    if (not old or meta_path.stat().st_mtime < image.stat().st_mtime
+            or old.get("box", list(BOX)) != box or old.get("regions") != regions):
+        color, ink, labels, meta = strokes.extract(cv2.imread(str(image), cv2.IMREAD_UNCHANGED), box=box,
+                                                   regions=regions)
+        meta["regions"] = regions
         cv2.imwrite(str(job / "color.png"), color)
         cv2.imwrite(str(job / "ink.png"), ink)
         cv2.imwrite(str(job / "labels.png"), labels)
@@ -68,7 +78,7 @@ def run(scene_path, lead=LEAD):
     # 4. mốc bắt đầu vẽ từng vật thể
     starts, after = [], 0.0
     for i in range(n_elem):
-        cue = sc.get("cues", [])[i] if i < len(sc.get("cues", [])) else None
+        cue = cues[i] if i < len(cues) else None
         t = align.find_cue(words, tts.normalize(cue), after) if cue else None
         if cue and t is None:
             print(f"  ! không tìm thấy cụm '{cue}' trong lời đọc → vẽ ngay sau vật trước")

@@ -6,7 +6,8 @@
   "scenes": [
     {"narration": "lời đọc tiếng Việt của cảnh",
      "image_subject": "mô tả hình doodle bằng tiếng Anh",
-     "cue": "cụm từ trong narration — lúc nói tới thì bắt đầu vẽ",
+     "elements": [{"cue": "cụm từ trong narration — lúc nói tới thì bắt đầu vẽ vật thể",
+                   "object": "tên vật thể tiếng Anh, có trong image_subject — để định vị trong ảnh"}],
      "on_screen_text": "chữ ngắn viết tay đầu cảnh (từ khoá/số liệu), có thể rỗng"}
   ]
 }
@@ -36,14 +37,18 @@ Yêu cầu:
 - Mỗi cảnh: "image_subject" bằng TIẾNG ANH, mô tả MỘT hình minh hoạ đơn giản vẽ được bằng bút dạ
   (tối đa 3 vật thể cụ thể, có thể là người hoặc đồ vật; KHÔNG có chữ, số, biểu đồ, giao diện, bản đồ).
   Ví dụ tốt: "a smiling woman drinking a glass of water next to an alarm clock".
-- Mỗi cảnh: "cue" là cụm 1–4 từ COPY NGUYÊN VĂN từ narration của chính cảnh đó, gọi tên thứ được vẽ
-  (hình sẽ bắt đầu được vẽ đúng lúc giọng đọc nói tới cụm này).
+- Mỗi cảnh: "elements" liệt kê ĐỦ MỌI vật thể được vẽ trong image_subject (1–3, kể cả người), không bỏ sót,
+  không thêm thứ không vẽ được (nơi chốn, cảm xúc), theo thứ tự được nhắc trong narration. Mỗi vật thể:
+  "cue" là cụm 1–4 từ COPY NGUYÊN VĂN từ narration của chính cảnh đó, nói tới vật thể này
+  (vật thể sẽ được vẽ đúng lúc giọng đọc nói tới cụm này); "object" là tên vật thể bằng tiếng Anh,
+  COPY NGUYÊN VĂN từ image_subject (vd. "woman", "glass of water", "alarm clock"). Các cue khác nhau.
 - Mỗi cảnh: "on_screen_text" là chữ viết lên bảng, 1–5 từ tiếng Việt tóm ý chính hoặc con số đáng nhớ
   (vd. "Ngủ đủ 8 tiếng", "25°C"), KHÔNG chép nguyên câu narration; để "" nếu cảnh không cần chữ.
 - "title": tiêu đề video ngắn, dưới 60 ký tự.
 
 Chỉ trả về JSON hợp lệ, không giải thích, theo đúng dạng:
-{{"title": "...", "scenes": [{{"narration": "...", "image_subject": "...", "cue": "...", "on_screen_text": "..."}}]}}"""
+{{"title": "...", "scenes": [{{"narration": "...", "image_subject": "...",
+  "elements": [{{"cue": "...", "object": "..."}}], "on_screen_text": "..."}}]}}"""
 
 
 def _norm(s):
@@ -51,9 +56,14 @@ def _norm(s):
     return re.sub(r"[^\w\s]", "", s).split()
 
 
-def contains_phrase(text, phrase):
+def phrase_index(text, phrase):
+    """Vị trí (theo từ) lần đầu cụm `phrase` xuất hiện trong text, -1 nếu không có."""
     t, p = _norm(text), _norm(phrase)
-    return bool(p) and any(t[i:i + len(p)] == p for i in range(len(t) - len(p) + 1))
+    return next((i for i in range(len(t) - len(p) + 1) if p and t[i:i + len(p)] == p), -1)
+
+
+def contains_phrase(text, phrase):
+    return phrase_index(text, phrase) >= 0
 
 
 def extract_json(text):
@@ -74,9 +84,15 @@ def validate(script, n_min, n_max, w_min, w_max):
     for i, sc in enumerate(scenes, 1):
         nar = str(sc.get("narration", "")).strip()
         subj = str(sc.get("image_subject", "")).strip()
-        cue = str(sc.get("cue", "")).strip()
         text = str(sc.get("on_screen_text", "")).strip()
-        sc["narration"], sc["image_subject"], sc["cue"], sc["on_screen_text"] = nar, subj, cue, text
+        sc["narration"], sc["image_subject"], sc["on_screen_text"] = nar, subj, text
+        els = sc.get("elements")
+        if not isinstance(els, list) or not 1 <= len(els) <= 3:
+            errors.append(f"cảnh {i}: 'elements' cần 1–3 vật thể")
+            els = []
+        els = [{"cue": str(e.get("cue", "")).strip(), "object": str(e.get("object", "")).strip()}
+               for e in els if isinstance(e, dict)]
+        sc["elements"] = sorted(els, key=lambda e: phrase_index(nar, e["cue"]))  # theo thứ tự được nói
         n = len(nar.split())
         words += n
         if not 8 <= n <= 45:
@@ -85,8 +101,11 @@ def validate(script, n_min, n_max, w_min, w_max):
             errors.append(f"cảnh {i}: image_subject phải là tiếng Anh, không rỗng")
         if len(text.split()) > 6 or len(text) > 32:
             errors.append(f"cảnh {i}: on_screen_text '{text}' quá dài, tối đa 5 từ")
-        if not contains_phrase(nar, cue):
-            errors.append(f"cảnh {i}: cue '{cue}' không có nguyên văn trong narration")
+        for e in els:
+            if not contains_phrase(nar, e["cue"]):
+                errors.append(f"cảnh {i}: cue '{e['cue']}' không có nguyên văn trong narration")
+            if not contains_phrase(subj, e["object"]):
+                errors.append(f"cảnh {i}: object '{e['object']}' không có nguyên văn trong image_subject")
     if not (w_min * 0.8 <= words <= w_max * 1.2):
         errors.append(f"tổng {words} từ, cần {w_min}–{w_max}")
     return errors
@@ -159,7 +178,8 @@ def main():
     Path(args.out).parent.mkdir(parents=True, exist_ok=True)
     Path(args.out).write_text(json.dumps(script, ensure_ascii=False, indent=1))
     for i, sc in enumerate(script["scenes"], 1):
-        print(f"[{i}] {sc['narration']}\n    🖼 {sc['image_subject']}\n    ▶ cue: {sc['cue']}")
+        cues = ", ".join(f"{e['cue']} → {e['object']}" for e in sc["elements"])
+        print(f"[{i}] {sc['narration']}\n    🖼 {sc['image_subject']}\n    ▶ {cues}")
     print(f"→ {args.out}")
 
 

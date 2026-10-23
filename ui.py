@@ -11,7 +11,7 @@ from pathlib import Path
 import gradio as gr
 
 import make_video as mv
-from pipeline import cover, image_gen
+from pipeline import cover, image_gen, script_llm
 
 JOBS = mv.ROOT / "jobs"
 MUSIC = mv.ROOT / "assets" / "music"
@@ -54,10 +54,26 @@ def scene_state(job, i):
     sc = mv.load_script(job)["scenes"][i]
     built = json.loads(sj.read_text())
     # scene.json mới hơn video = lần dựng trước bị hỏng giữa chừng
+    els = mv.elements(sc)
     if (max(img.stat().st_mtime, sj.stat().st_mtime) > vid.stat().st_mtime or built["narration"] != sc["narration"]
-            or built["cues"] != [sc["cue"]] or built.get("text", "") != sc.get("on_screen_text", "")):
+            or built["cues"] != [e["cue"] for e in els] or built.get("text", "") != sc.get("on_screen_text", "")
+            or (all(e["object"] for e in els) and built.get("regions") != mv.regions(d, sc))):
         return "stale"
     return "ok"
+
+
+def format_elements(els):
+    """[{cue, object}] → 'cốc nước = glass of water; đồng hồ = alarm clock' để sửa trong 1 ô bảng."""
+    return "; ".join(f"{e['cue']} = {e['object']}" if e["object"] else e["cue"] for e in els)
+
+
+def parse_elements(text):
+    els = []
+    for part in text.split(";"):
+        cue, _, obj = part.partition("=")
+        if cue.strip():
+            els.append({"cue": cue.strip(), "object": obj.strip()})
+    return els
 
 
 def status(job):
@@ -80,7 +96,8 @@ def open_job(job):
     if not job:
         return "", [], gr.update(choices=[], value=None), status(job)
     s = mv.load_script(need(job))
-    rows = [[sc["narration"], sc["image_subject"], sc["cue"], sc.get("on_screen_text", "")] for sc in s["scenes"]]
+    rows = [[sc["narration"], sc["image_subject"], format_elements(mv.elements(sc)), sc.get("on_screen_text", "")]
+            for sc in s["scenes"]]
     return s.get("title", ""), rows, gr.update(choices=list(range(1, len(rows) + 1)), value=1), status(job)
 
 
@@ -101,11 +118,15 @@ def save_script(job, title, rows):
     s = json.loads(path.read_text())
     if len(rows) != len(s["scenes"]):
         raise gr.Error(f"Không đổi được số cảnh ở đây (đang có {len(s['scenes'])}).")
-    for k, (narration, _, cue, _) in enumerate(rows, 1):
-        if cue.strip().lower() not in narration.lower():
-            gr.Warning(f"Cảnh {k}: cue '{cue}' không có trong lời thoại → vật thể sẽ được vẽ ngay từ đầu.")
+    for k, (narration, subject, els, _) in enumerate(rows, 1):
+        for e in parse_elements(els):
+            if not script_llm.contains_phrase(narration, e["cue"]):
+                gr.Warning(f"Cảnh {k}: cue '{e['cue']}' không có trong lời thoại → vật thể vẽ nối tiếp vật trước.")
+            if e["object"] and not script_llm.contains_phrase(subject, e["object"]):
+                gr.Warning(f"Cảnh {k}: '{e['object']}' không có trong mô tả hình → có thể không định vị được.")
     s["title"] = title
-    s["scenes"] = [{"narration": n, "image_subject": sub, "cue": c, "on_screen_text": t.strip()} for n, sub, c, t in rows]
+    s["scenes"] = [{"narration": n, "image_subject": sub, "elements": parse_elements(els), "on_screen_text": t.strip()}
+                   for n, sub, els, t in rows]
     path.write_text(json.dumps(s, ensure_ascii=False, indent=1))
     gr.Info("Đã lưu kịch bản.")
     return status(job)
@@ -203,7 +224,7 @@ def build_ui(voices):
                 with gr.Tabs():
                     with gr.Tab("1. Kịch bản"):
                         title = gr.Textbox(label="Tiêu đề")
-                        table = gr.Dataframe(headers=["Lời thoại", "Mô tả hình (tiếng Anh)", "Cue (cụm từ bắt đầu vẽ)",
+                        table = gr.Dataframe(headers=["Lời thoại", "Mô tả hình (tiếng Anh)", "Vật thể: cụm từ = tên tiếng Anh; …",
                                                       "Chữ trên màn hình (1–5 từ, để trống = không)"],
                                              type="array", interactive=True, wrap=True,
                                              column_widths=["38%", "28%", "17%", "17%"])

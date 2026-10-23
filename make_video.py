@@ -2,7 +2,8 @@
 
   1. LLM (Qwen3.6-35B-A3B) viết kịch bản      → jobs/<slug>/script.json
   2. Sinh ảnh từng cảnh (FLUX.2 Klein)         → jobs/<slug>/scene_XX/image.png
-  3. Mỗi cảnh: tách nét → giọng đọc → whisper → render → scene_XX/scene.mp4
+  3. Định vị từng vật thể trong ảnh (Qwen3.6 nhìn ảnh)  → scene_XX/regions.json
+     Mỗi cảnh: tách nét theo vật thể → giọng đọc → whisper → render (vật nào được nhắc thì vẽ lúc đó) → scene_XX/scene.mp4
   4. Ghép các cảnh (chuyển cảnh trượt giấy 0.4s) + nhạc nền (tự giảm khi có lời) + chuẩn âm lượng -14 LUFS → jobs/<slug>/final.mp4
      + ảnh bìa tiêu đề + hình cảnh 1 (nếu chưa có)                            → jobs/<slug>/cover.jpg
 
@@ -114,6 +115,17 @@ def _gen_images(items, seeds, model, style):
             shutil.copy(best, dst)
 
 
+def _locate(items):
+    from pipeline import locate
+
+    loc = locate.Locator()
+    for image, objects, out in items:
+        boxes = loc.find(image, objects)
+        print(f"  {Path(out).parent.name}: " + ", ".join(f"{o} {'✓' if b else '✗'}" for o, b in zip(objects, boxes)),
+              flush=True)
+        Path(out).write_text(json.dumps({"objects": objects, "boxes": boxes}))
+
+
 def _build_scenes(scene_files):
     from pipeline import scene
 
@@ -128,6 +140,21 @@ def scene_dir(job, i):
 
 def load_script(job):
     return json.loads((Path(job) / "script.json").read_text())
+
+
+def elements(sc):
+    """Vật thể của cảnh [{cue, object}]; kịch bản cũ chỉ có 1 'cue' → 1 vật thể, không định vị."""
+    return sc.get("elements") or [{"cue": sc.get("cue", ""), "object": ""}]
+
+
+def regions(d, sc):
+    """Khung đã định vị (song song với elements), None nếu chưa có hoặc đã cũ (ảnh/vật thể đổi)."""
+    f, img = Path(d) / "regions.json", Path(d) / "image.png"
+    objects = [e["object"] for e in elements(sc)]
+    if not all(objects) or not f.exists() or f.stat().st_mtime < img.stat().st_mtime:
+        return None
+    r = json.loads(f.read_text())
+    return r["boxes"] if r["objects"] == objects else None
 
 
 # --- 4 bước trên 1 thư mục job (dùng chung cho make() và ui.py); i = chỉ số cảnh từ 0 ---
@@ -146,12 +173,20 @@ def gen_images(job, scenes, seeds=2, model="flux2-klein-4b", style="color"):
 
 def build_scenes(job, scenes, voice="Ngọc Huyền"):
     script = load_script(job)
+    todo = []  # cảnh cần định vị vật thể (chưa có / ảnh hoặc vật thể đã đổi)
+    for i in scenes:
+        sc, d = script["scenes"][i], scene_dir(job, i)
+        objects = [e["object"] for e in elements(sc)]
+        if all(objects) and regions(d, sc) is None:
+            todo.append((str(d / "image.png"), objects, str(d / "regions.json")))
+    if todo:
+        isolated(_locate, todo)
     files = []
     for i in scenes:
         sc, d = script["scenes"][i], scene_dir(job, i)
         (d / "scene.json").write_text(json.dumps({
-            "image": "image.png", "narration": sc["narration"], "cues": [sc["cue"]],
-            "text": sc.get("on_screen_text", ""),
+            "image": "image.png", "narration": sc["narration"], "cues": [e["cue"] for e in elements(sc)],
+            "regions": regions(d, sc), "text": sc.get("on_screen_text", ""),
             "tts": {"engine": "vieneu", "voice": voice},
         }, ensure_ascii=False, indent=1))
         files.append(str(d / "scene.json"))

@@ -23,9 +23,12 @@ Pipeline 7 bước đã chạy trọn đầu–cuối, gồm cả phụ đề ka
 - [x] **Chuyển cảnh** (2026-10-23): `concat()` dùng `xfade=slideleft` 0.4s; tiếng cắt 0.4s lặng cuối cảnh trước thay vì crossfade. Đã kiểm: thời lượng = tổng cảnh − 6×0.4s, lệch tiếng 21ms. Đã xuất lại video "đi bộ" + "3 mẹo" (bỏ nhạc test).
 - [x] **Git + test lõi** (2026-10-23): `git init` (bỏ `jobs/`, `models/`, `*.mp4`), `tests/` 28 test pytest ~3s không nạp model: align/find_cue/chunk/SRT, validate kịch bản, wrap + Karaoke, số → chữ, `ui.scene_state`. Chạy: `.venv/bin/python -m pytest -q`.
 - [x] **TTS đọc đơn vị** (2026-10-23): `tts.MEASURES` — sau số: °C/°F/°, km/h, km, cm, mm, kg, mg, ml → chữ ("độ C", "ki-lô-mét"…). Không có số đứng trước thì giữ nguyên. Đã nghe thử VieNeu + whisper: đọc đúng "độ C". Chưa làm m, g, l (dễ nhầm, vd. 5G, 1m70).
-- [x] Video đã làm: `jobs/tai-sao-nen-uong-mot-coc-nuoc-ngay-khi-thuc-day/`, `jobs/3-meo-ngu-ngon-hon-moi-dem/`, `jobs/vi-sao-nen-di-bo-30-phut-moi-ngay/`
+- [x] **Nhiều vật thể / cue trong 1 cảnh** (2026-10-23): kịch bản có `elements: [{cue, object}]` (1–3, đủ mọi vật thể vẽ ra). `pipeline/locate.py`: Qwen3.6 nhìn ảnh (mlx-vlm, cùng model, không tải thêm) khoanh khung → `scene_XX/regions.json` (cache theo ảnh + tên vật thể), chạy trong `build_scenes` trước khi dựng. `strokes.extract(regions=)`: mỗi nét skeleton theo khung chứa phần lớn điểm của nó, khung nhỏ thắng khi chồng nhau, màu theo mảng liền. UI cột "Vật thể: cụm từ = tên tiếng Anh; …". Kịch bản cũ (`cue`) chạy như trước. Đã chạy trọn "Vì sao nên ngủ trưa 20 phút": 12/12 vật thể định vị được, thêm ~20s/video.
+- [x] Video đã làm: `jobs/tai-sao-nen-uong-mot-coc-nuoc-ngay-khi-thuc-day/`, `jobs/3-meo-ngu-ngon-hon-moi-dem/`, `jobs/vi-sao-nen-di-bo-30-phut-moi-ngay/`, `jobs/vi-sao-nen-ngu-trua-20-phut/`
 
 ## Quyết định quan trọng (và lý do)
+- Định vị vật thể bằng Qwen3.6 vision thay vì sinh từng vật thể 1 ảnh: giữ hình liền mạch (người cầm cốc), không thêm model, ~6s/ảnh. Gom nét theo khoảng cách cũ vô dụng cho việc này: ảnh AI gần như luôn dính thành 1 cụm.
+- Chia nét theo từng nét skeleton (đa số điểm) chứ không theo pixel: cạnh khung cắt ngang nét gây nét vẽ dở. Đã thử nới khung 2% → tệ hơn, bỏ.
 - FLUX.2 Klein 4B làm model ảnh mặc định: nhanh hơn ~3x Z-Image (52s vs 169s/ảnh), hiểu prompt tốt hơn.
 - Model VieNeu đặt ở `models/` chứ không ở cache HF: onnxruntime 1.31 chặn file `.data` sau symlink.
 - Mỗi bước nặng chạy tiến trình con: giải phóng model trong cùng tiến trình vẫn giữ ~10GB RAM.
@@ -49,4 +52,7 @@ Danh sách đầy đủ + trạng thái: https://claude.ai/artifact/Y75QUxinA8UC
 - [ ] Config YAML (plan giai đoạn 5) — chưa làm; cân nhắc có cần không vì đã có CLI + UI
 
 ## Vấn đề đã biết
+- Vật thể không có trong `elements` → nét của nó bị chia theo khung gần nhất (đã ép prompt liệt kê đủ). Vật thể ôm/chồng nhau (bộ xương ôm đồng hồ) chia chưa sắc.
+- Cảnh ngắn (~4s) mà 3 vật thể: vật đầu vẽ lâu nên vật sau trễ lời ~1–1.5s.
+- LLM thỉnh thoảng chèn tiếng Anh dính vào lời thoại ("não bộrefresh") — validate chưa bắt.
 - Plan gốc: `~/.claude/plans/t-i-mu-n-l-n-wondrous-twilight.md`

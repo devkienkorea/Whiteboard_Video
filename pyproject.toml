@@ -13,6 +13,7 @@ dependencies = [
     "mflux>=0.23",
     "vieneu>=3.8",
     "mlx-lm>=0.32",
+    "mlx-vlm>=0.7",  # Qwen3.6 nhìn ảnh để định vị vật thể
     "pillow<13",  # Pillow 13 không chạy trên Python 3.11
 ]
 

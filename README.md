@@ -7,7 +7,11 @@ Kế hoạch đầy đủ: 7 bước (kịch bản LLM → TTS → whisper → s
 - `pipeline/strokes.py` — ảnh lineart → nét bút có thứ tự (`strokes.json`, `preview.png` để kiểm tra)
 - `pipeline/render.py` — bàn tay vẽ nét, tô màu từng vật thể → MP4 1080x1920
 - `make_video.py` — chạy trọn: chủ đề → kịch bản → ảnh → từng cảnh → `final.mp4`
-- `pipeline/script_llm.py` — Qwen3.6-35B-A3B (mlx-lm, 4-bit) viết `script.json`: lời thoại, prompt ảnh tiếng Anh, cue từng cảnh
+- `pipeline/script_llm.py` — Qwen3.6-35B-A3B (mlx-lm, 4-bit) viết `script.json`: lời thoại, prompt ảnh tiếng Anh,
+  1–3 vật thể mỗi cảnh (`elements`: cụm từ kích hoạt `cue` + tên tiếng Anh `object`)
+- `pipeline/locate.py` — Qwen3.6 nhìn ảnh (mlx-vlm, cùng model) khoanh khung từng vật thể → `regions.json`;
+  `strokes.extract(regions=...)` chia nét theo khung (mỗi nét theo khung chứa phần lớn nó, khung nhỏ thắng khi chồng nhau)
+  → mỗi vật thể được vẽ đúng lúc giọng đọc nhắc tới. Kịch bản cũ chỉ có `cue` vẫn chạy như trước
 - `pipeline/tts.py` — đọc tiếng Việt offline: VieNeu-TTS v3 Turbo (mặc định, 25 giọng, 48kHz), Piper, hoặc giọng macOS "Linh"; tự đổi số/%/đơn vị (°C, km, kg…) thành chữ
 - `pipeline/align.py` — mlx-whisper lấy mốc thời gian từng từ, khớp với kịch bản → `words.json`, `subs.srt`
 - `pipeline/scene.py` — chạy trọn 1 cảnh từ `scene.json`: tách nét → giọng đọc → whisper → vẽ từng vật thể đúng lúc được nhắc → MP4 có tiếng

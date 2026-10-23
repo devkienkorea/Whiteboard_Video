@@ -24,12 +24,19 @@ NEIGHBORS = [(-1, 0), (1, 0), (0, -1), (0, 1), (-1, -1), (-1, 1), (1, -1), (1, 1
 
 def fit_to_canvas(img, W, H, box):
     """Thu nhỏ/phóng ảnh vào ô box=(x, y, w, h) (tỉ lệ theo canvas), nền trắng."""
+    return _fit(img, W, H, box)[0]
+
+
+def _fit(img, W, H, box):
+    """Như fit_to_canvas, trả thêm hàm đổi toạ độ (x, y) ảnh gốc → canvas."""
     if img.ndim == 2:
         img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
     if img.shape[2] == 4:
         alpha = img[:, :, 3:4].astype(np.float32) / 255
         img = (img[:, :, :3] * alpha + 255 * (1 - alpha)).astype(np.uint8)
-    img = trim_to_content(whiten_background(img))
+    img = whiten_background(img)
+    cx0, cy0, cx1, cy1 = content_rect(img)
+    img = img[cy0:cy1, cx0:cx1]
     bx, by, bw, bh = box[0] * W, box[1] * H, box[2] * W, box[3] * H
     h, w = img.shape[:2]
     scale = min(bw / w, bh / h)
@@ -40,7 +47,7 @@ def fit_to_canvas(img, W, H, box):
     x0 = int(bx + (bw - nw) / 2)
     y0 = int(by + (bh - nh) / 2)
     canvas[y0:y0 + nh, x0:x0 + nw] = resized
-    return canvas
+    return canvas, lambda x, y: (x0 + (x - cx0) * scale, y0 + (y - cy0) * scale)
 
 
 def whiten_background(img):
@@ -62,17 +69,15 @@ def content_mask(color):
     return (hsv[:, :, 2] < 235) | (hsv[:, :, 1] > 20)
 
 
-def trim_to_content(img, pad=0.04):
-    """Cắt bỏ lề trắng thừa để hình lấp đầy ô đặt hình (model hay vẽ vật thể nhỏ giữa ảnh)."""
+def content_rect(img, pad=0.04):
+    """Khung (x0, y0, x1, y1) bỏ lề trắng thừa để hình lấp đầy ô đặt hình (model hay vẽ vật thể nhỏ giữa ảnh)."""
+    h, w = img.shape[:2]
     mask = remove_specks(content_mask(img), 30)
     ys, xs = np.nonzero(mask)
     if ys.size == 0:
-        return img
-    h, w = img.shape[:2]
+        return 0, 0, w, h
     p = int(pad * max(np.ptp(ys), np.ptp(xs)))
-    y0, y1 = max(0, ys.min() - p), min(h, ys.max() + p + 1)
-    x0, x1 = max(0, xs.min() - p), min(w, xs.max() + p + 1)
-    return img[y0:y1, x0:x1]
+    return max(0, xs.min() - p), max(0, ys.min() - p), min(w, xs.max() + p + 1), min(h, ys.max() + p + 1)
 
 
 def remove_specks(mask, min_area):
@@ -155,17 +160,8 @@ def order_strokes(strokes, start):
     return ordered
 
 
-def extract(img, W=1080, H=1920, box=(0.05, 0.10, 0.90, 0.62), ink_v=110, group_px=12, min_area=12):
-    color = fit_to_canvas(img, W, H, box)
-    hsv = cv2.cvtColor(color, cv2.COLOR_BGR2HSV)
-    val = hsv[:, :, 2]
-    nonwhite = content_mask(color)
-
-    # nét mực = pixel tối (theo V nên màu đậm như xanh dương không bị nhầm là mực)
-    ink_hard = remove_specks(val < ink_v, min_area)
-    # mask hiển thị gồm cả viền khử răng cưa quanh nét
-    ink_soft = cv2.dilate(ink_hard.astype(np.uint8), np.ones((3, 3), np.uint8), iterations=2).astype(bool) & nonwhite
-
+def group_by_distance(ink_hard, ink_soft, nonwhite, group_px):
+    """Nhãn vật thể khi không có khung: nét cách nhau < group_px là 1 vật thể, màu thuộc nhóm nét bao quanh nó."""
     # gom nét gần nhau thành 1 "vật thể"
     grouped = cv2.dilate(ink_hard.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (group_px * 2 + 1,) * 2))
     n_groups, group_lab = cv2.connectedComponents(grouped, connectivity=8)
@@ -192,7 +188,70 @@ def extract(img, W=1080, H=1920, box=(0.05, 0.10, 0.90, 0.62), ink_v=110, group_
     labels[left_lab > 0] = left_lab[left_lab > 0] + n_groups - 1
     n_total = n_groups - 1 + n_left - 1
 
-    # thứ tự vẽ mặc định: theo hàng từ trên xuống, trong hàng từ trái sang
+    return labels, n_total
+
+
+def region_owner(rects, W, H):
+    """Mỗi pixel thuộc khung nhỏ nhất chứa nó (vật nằm trong vật khác vẫn tách được), ngoài mọi khung thì khung gần nhất.
+    Trả về ảnh id 1..len(rects)."""
+    yy, xx = np.mgrid[0:H, 0:W].astype(np.float32)
+    cost = []
+    for x0, y0, x1, y1 in rects:
+        dist = np.hypot(np.maximum(np.maximum(x0 - xx, xx - x1), 0), np.maximum(np.maximum(y0 - yy, yy - y1), 0))
+        cost.append(dist * 1e7 + (x1 - x0) * (y1 - y0))  # diện tích < 1e7 px → chỉ quyết khi cùng khoảng cách
+    return np.argmin(cost, axis=0) + 1
+
+
+def snap_to_parts(owner, mask, share=0.6):
+    """Mỗi mảng liền trong mask (1 nét, 1 mảng màu) theo khung chứa ≥ share diện tích của nó, khỏi bị cạnh khung
+    cắt ngang; mảng trải đều nhiều khung thì chia theo từng pixel. Ngoài mask = 0."""
+    n, comp = cv2.connectedComponents(mask.astype(np.uint8), connectivity=8)
+    k = int(owner.max()) + 1
+    counts = np.bincount((comp * k + owner)[mask], minlength=n * k).reshape(n, k)
+    best = counts.argmax(axis=1)
+    ok = counts.max(axis=1) >= share * np.maximum(counts.sum(axis=1), 1)
+    return np.where(mask, np.where(ok[comp], best[comp], owner), 0).astype(np.int32)
+
+
+def extract(img, W=1080, H=1920, box=(0.05, 0.10, 0.90, 0.62), ink_v=110, group_px=12, min_area=12, regions=None):
+    """regions: khung [x0, y0, x1, y1] (tỉ lệ 0–1 theo ảnh gốc) của từng vật thể, theo thứ tự vẽ →
+    mỗi khung thành 1 vật thể. Không có thì gom nét gần nhau, vẽ từ trên xuống, trái sang."""
+    color, to_canvas = _fit(img, W, H, box)
+    hsv = cv2.cvtColor(color, cv2.COLOR_BGR2HSV)
+    val = hsv[:, :, 2]
+    nonwhite = content_mask(color)
+
+    # nét mực = pixel tối (theo V nên màu đậm như xanh dương không bị nhầm là mực)
+    ink_hard = remove_specks(val < ink_v, min_area)
+    # mask hiển thị gồm cả viền khử răng cưa quanh nét
+    ink_soft = cv2.dilate(ink_hard.astype(np.uint8), np.ones((3, 3), np.uint8), iterations=2).astype(bool) & nonwhite
+
+    skel = skeletonize(ink_hard)
+    # độ dày cọ đủ phủ hết bề rộng nét gốc
+    dt = cv2.distanceTransform(ink_hard.astype(np.uint8), cv2.DIST_L2, 3)
+    widths = dt[skel]
+    brush = int(np.ceil(2 * np.percentile(widths, 90))) + 4 if widths.size else 8
+    # skeleton → polyline; nét ngắn hơn ~bề rộng cọ là "gai" của skeleton ở đầu nét/chỗ giao của nét dày:
+    # đã nằm trong nét chính, cọ quét qua rồi; còn sót thì render hiện nốt khi xong vật thể
+    paths = [p for p in trace_skeleton(skel) if len(p) >= max(3, brush * 0.75)]
+
+    if regions:
+        ih, iw = img.shape[:2]
+        rects = [(*to_canvas(x0 * iw, y0 * ih), *to_canvas(x1 * iw, y1 * ih)) for x0, y0, x1, y1 in regions]
+        owner = region_owner(rects, W, H)
+        # mỗi nét theo khung chứa phần lớn điểm của nó; mực quanh nét mang nhãn của nét → khớp đường bút khi render
+        path_elem, by_stroke = [], np.zeros((H, W), np.int32)
+        for p in paths:
+            ys_, xs_ = np.array(p).T
+            e = int(np.bincount(owner[ys_, xs_]).argmax())
+            path_elem.append(e)
+            cv2.polylines(by_stroke, [np.stack([xs_, ys_], 1).astype(np.int32)], False, e, thickness=brush)
+        labels = np.where(ink_soft, np.where(by_stroke > 0, by_stroke, owner), 0) + snap_to_parts(owner, nonwhite & ~ink_soft)
+        n_total = len(rects)
+    else:
+        labels, n_total = group_by_distance(ink_hard, ink_soft, nonwhite, group_px)
+    color_px = nonwhite & ~ink_soft
+
     boxes = {}
     ys, xs = np.nonzero(labels)
     lab = labels[ys, xs]
@@ -200,28 +259,21 @@ def extract(img, W=1080, H=1920, box=(0.05, 0.10, 0.90, 0.62), ink_v=110, group_
         sel = lab == g
         if sel.any():
             boxes[g] = (xs[sel].min(), ys[sel].min(), xs[sel].max() + 1, ys[sel].max() + 1)
-    band = H * 0.12
-    order = sorted(boxes, key=lambda g: (int(((boxes[g][1] + boxes[g][3]) / 2) // band), boxes[g][0]))
+        elif regions:  # khung không trùng nét nào: giữ vật thể rỗng để cue vẫn khớp đúng thứ tự
+            boxes[g] = tuple(int(v) for v in rects[g - 1])
+    if regions:
+        order = list(range(1, n_total + 1))
+    else:
+        # thứ tự vẽ mặc định: theo hàng từ trên xuống, trong hàng từ trái sang
+        band = H * 0.12
+        order = sorted(boxes, key=lambda g: (int(((boxes[g][1] + boxes[g][3]) / 2) // band), boxes[g][0]))
     lut = np.zeros(n_total + 1, np.int32)
     for new_id, g in enumerate(order, start=1):
         lut[g] = new_id
     labels = lut[labels]
 
-    skel = skeletonize(ink_hard)
-    # độ dày cọ đủ phủ hết bề rộng nét gốc
-    dt = cv2.distanceTransform(ink_hard.astype(np.uint8), cv2.DIST_L2, 3)
-    widths = dt[skel]
-    brush = int(np.ceil(2 * np.percentile(widths, 90))) + 4 if widths.size else 8
-
-    # skeleton → polyline, gán vào vật thể theo nhãn
-    paths = trace_skeleton(skel)
     per_elem = {i: [] for i in range(1, len(order) + 1)}
-    for p in paths:
-        # nét ngắn hơn ~bề rộng cọ là "gai" của skeleton ở đầu nét/chỗ giao của nét dày:
-        # đã nằm trong nét chính, cọ quét qua rồi; còn sót thì render hiện nốt khi xong vật thể
-        if len(p) < max(3, brush * 0.75):
-            continue
-        e = labels[p[len(p) // 2]]
+    for p, e in zip(paths, path_elem if regions else (labels[p[len(p) // 2]] for p in paths)):
         if e:
             per_elem[e].append(np.array([(x, y) for y, x in p], np.float32))
 
