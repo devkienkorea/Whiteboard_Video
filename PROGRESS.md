@@ -2,7 +2,7 @@
 
 > File này là "bộ nhớ" giữa các phiên Claude. Đầu phiên: đọc. Cuối phiên: cập nhật.
 
-## Trạng thái hiện tại (2026-10-23)
+## Trạng thái hiện tại (2026-10-24)
 Pipeline 7 bước đã chạy trọn đầu–cuối, gồm cả phụ đề karaoke + nhạc nền: `make_video.py "<chủ đề>"` → `jobs/<slug>/final.mp4` (~15 phút/video 7 cảnh).
 
 ## Đã xong
@@ -26,7 +26,30 @@ Pipeline 7 bước đã chạy trọn đầu–cuối, gồm cả phụ đề ka
 - [x] **Nhiều vật thể / cue trong 1 cảnh** (2026-10-23): kịch bản có `elements: [{cue, object}]` (1–3, đủ mọi vật thể vẽ ra). `pipeline/locate.py`: Qwen3.6 nhìn ảnh (mlx-vlm, cùng model, không tải thêm) khoanh khung → `scene_XX/regions.json` (cache theo ảnh + tên vật thể), chạy trong `build_scenes` trước khi dựng. `strokes.extract(regions=)`: mỗi nét skeleton theo khung chứa phần lớn điểm của nó, khung nhỏ thắng khi chồng nhau, màu theo mảng liền. UI cột "Vật thể: cụm từ = tên tiếng Anh; …". Kịch bản cũ (`cue`) chạy như trước. Đã chạy trọn "Vì sao nên ngủ trưa 20 phút": 12/12 vật thể định vị được, thêm ~20s/video.
 - [x] **Bắt tiếng Anh dính vào lời + cue quá sát** (2026-10-23): `script_llm.glued_words()` — từ có dấu tiếng Việt mà không phải 1 âm tiết (regex `SYLLABLE`) → lỗi, LLM viết lại. `validate` bắt 2 cue liên tiếp cách < `CUE_GAP`=4 từ (prompt cũng dặn). Quét 540 từ kịch bản cũ: 0 báo nhầm.
 - [x] **Cảnh ngắn vẽ trễ lời** (2026-10-23): `render.schedule` cho tăng tốc tới 6.7x (`min_factor` 0.3 → 0.15). Đo trên 4 video cũ: trễ tệ nhất 2.1s → 0.9s (cảnh còn lại có cue cách 3 từ — luật CUE_GAP chặn từ kịch bản mới). Video cũ chưa render lại.
+- [x] **Thử sinh nhạc nền bằng AI local** (2026-10-23): ACE-Step 1.5 turbo (MIT, cho phép thương mại) ở `models/ACE-Step-1.5` (venv riêng qua `uv sync`), script `tools/gen_music.py` không dùng LM. Mac MPS: nạp 180s (lần đầu tải model), sinh 60s nhạc trong 44s, RAM ~11GB. Ra `assets/music/ace_lofi_test.wav` -14.9 LUFS; lồng vào video OK. Cuối bài có 1.8s fade + lặng → lặp nhạc sẽ có khoảng hụt.
+- [x] **Cue sát nhau thành lỗi mềm** (2026-10-23): hết 3 lần thử mà chỉ còn lỗi CUE_GAP → vẫn nhận kịch bản (`script_llm.only_soft`). Lý do: chủ đề "ổ cứng cũ" fail cả 3 lần chỉ vì cue cách 1–2 từ, mất cả kịch bản; vẽ trễ chút thì `render.schedule` đã bù.
+- [x] **Ghi lại bug đã sửa + sửa pytest quét nhầm `models/`** (2026-10-24): bảng "Bug đã sửa" bên dưới; `testpaths` trong `pyproject.toml`. 50 test pass.
 - [x] Video đã làm: `jobs/tai-sao-nen-uong-mot-coc-nuoc-ngay-khi-thuc-day/`, `jobs/3-meo-ngu-ngon-hon-moi-dem/`, `jobs/vi-sao-nen-di-bo-30-phut-moi-ngay/`, `jobs/vi-sao-nen-ngu-trua-20-phut/`
+
+## Bug đã sửa — đừng để tái hiện
+> Mỗi dòng: **triệu chứng** → nguyên nhân → cách sửa → chốt chặn (test/luật). Sửa code chạm vào chỗ này thì chạy `.venv/bin/python -m pytest -q` và đọc lại dòng tương ứng.
+
+| Triệu chứng | Nguyên nhân → cách sửa | Chốt chặn |
+|---|---|---|
+| TTS/LLM tiếp theo bị thiếu RAM, máy treo | Giải phóng model trong cùng tiến trình vẫn giữ ~10GB → mỗi bước nặng chạy `isolated()` (tiến trình con) | Luật trong CLAUDE.md |
+| VieNeu không nạp được model (onnxruntime báo file `.data`) | onnxruntime 1.31 chặn `.data` sau symlink cache HF → đặt model thật ở `models/` | Không chuyển về cache HF |
+| `pip install` kéo Pillow 13, crash trên Python 3.11 | Pillow 13 không hỗ trợ 3.11 → ghim `pillow<13` | `pyproject.toml` |
+| Phụ đề không hiện (ffmpeg báo thiếu filter) | ffmpeg Homebrew không có libass/drawtext → vẽ phụ đề bằng PIL trong `render.py` | Không dùng ASS/drawtext |
+| Chữ on-screen dấu sắc dính vào ê/ô | Font Marker Felt → đổi Chalkboard SE Bold | — |
+| Chuyển cảnh: phụ đề 2 cảnh chồng mờ / dòng chữ bị cắt ngang | `fade`/`smoothleft` chồng hình, `wipeleft` cắt chữ → dùng `xfade=slideleft` 0.4s; tiếng cắt 0.4s lặng cuối cảnh trước (không crossfade) | Đã kiểm lệch tiếng 21ms |
+| Đổi style mà ảnh style cũ vẫn được chọn "tốt nhất" | `generate_best` gộp seed cũ bất kể prompt → chỉ giữ seed cũ khi prompt (chủ thể + style) không đổi | — |
+| Vật thể vẽ dở dang, nửa nét thuộc vật thể khác | Chia theo pixel, cạnh khung cắt ngang nét → chia theo **cả nét skeleton** (đa số điểm), khung nhỏ thắng khi chồng. Nới khung 2% làm tệ hơn — đừng thử lại | `test_strokes.py` |
+| Mọi vật thể vẽ cùng lúc dù kịch bản có nhiều cue | Gom nét theo khoảng cách: ảnh AI gần như luôn dính thành 1 cụm → định vị bằng Qwen3.6 vision (`locate.py`) | `test_locate.py` |
+| TTS đọc "bộrefresh", sai âm | LLM dính từ tiếng Anh vào chữ Việt → `glued_words()` (regex `SYLLABLE`), bắt LLM viết lại. **Không** bắt từ tiếng Anh đứng riêng (video, calo…) kẻo LLM viết lại mãi | `test_bat_tieng_anh_dinh_vao_tu_viet` |
+| Vật thể sau vẽ trễ lời ~2s ở cảnh ngắn | Cue cách nhau 1–3 từ + tốc độ vẽ tối đa 3.3x → `CUE_GAP`=4 trong validate/prompt; `render.schedule` `min_factor` 0.3→0.15 (6.7x) | `test_cue_qua_sat_nhau` |
+| Mất cả kịch bản chủ đề "ổ cứng cũ" | Hết 3 lần thử chỉ còn lỗi CUE_GAP → `raise` → lỗi CUE_GAP thành lỗi mềm (`only_soft`), vẫn nhận kịch bản | `test_chi_con_cue_sat_la_loi_mem` |
+| TTS đọc "5 °C" sai | Ký hiệu đơn vị → `tts.MEASURES` chỉ đổi khi có số đứng trước. **Chưa** thêm m, g, l: nhầm với "5G", "1m70" | `test_normalize_don_vi` |
+| `pytest -q` báo 109 lỗi collection | pytest quét cả `models/ACE-Step-1.5` → `testpaths = ["tests"]` trong `pyproject.toml` (2026-10-24) | `pyproject.toml` |
 
 ## Quyết định quan trọng (và lý do)
 - Định vị vật thể bằng Qwen3.6 vision thay vì sinh từng vật thể 1 ảnh: giữ hình liền mạch (người cầm cốc), không thêm model, ~6s/ảnh. Gom nét theo khoảng cách cũ vô dụng cho việc này: ảnh AI gần như luôn dính thành 1 cụm.
@@ -49,7 +72,7 @@ Pipeline 7 bước đã chạy trọn đầu–cuối, gồm cả phụ đề ka
 ## Việc tiếp theo
 Danh sách đầy đủ + trạng thái: https://claude.ai/artifact/Y75QUxinA8UCLqAWrZL1ns
 <!-- TODO: điền mục tiêu tiếp theo, ví dụ: chất lượng ảnh, nhạc nền, hiển thị phụ đề, UI... -->
-- [ ] Bỏ nhạc nền không bản quyền thật vào `assets/music/` (hiện chưa có bài nào)
+- [ ] Nhạc nền: đã có `assets/music/ace_lofi_test.wav` (ACE-Step, không commit vì 11MB). Còn: sinh bài dài hơn video hoặc cắt bỏ đoạn fade+lặng cuối để lặp không hụt
 - [ ] Kiểm tra khung xem video trong UI trên trình duyệt thường (Chrome tự động hoá không tải media nên chưa xem được)
 - [ ] Thu âm giọng riêng (5–15s, sạch) bỏ vào `assets/voices/` để dùng clone
 - [ ] Config YAML (plan giai đoạn 5) — chưa làm; cân nhắc có cần không vì đã có CLI + UI

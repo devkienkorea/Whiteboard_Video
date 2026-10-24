@@ -19,3 +19,6 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]  # không quét models/ (ACE-Step có test riêng)

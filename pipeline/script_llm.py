@@ -131,6 +131,11 @@ def validate(script, n_min, n_max, w_min, w_max):
     return errors
 
 
+def only_soft(errors):
+    """Chỉ còn lỗi cue sát nhau (lỗi mềm) — kịch bản vẫn dùng được."""
+    return bool(errors) and all("cách nhau" in e for e in errors)
+
+
 class ScriptWriter:
     def __init__(self, model=LLM_MODEL):
         from mlx_lm import load
@@ -173,6 +178,11 @@ class ScriptWriter:
             # gửi lỗi lại cho model sửa
             messages += [{"role": "assistant", "content": raw},
                          {"role": "user", "content": "Sửa các lỗi sau rồi trả lại TOÀN BỘ JSON:\n- " + "\n- ".join(errors)}]
+        # cue sát nhau chỉ làm vật sau vẽ trễ chút (render.schedule tăng tốc bù) → vẫn nhận, không bỏ cả kịch bản
+        if only_soft(last_err):
+            print("  chấp nhận kịch bản dù còn cue sát nhau")
+            script["topic"] = topic
+            return script
         raise RuntimeError(f"LLM không tạo được kịch bản hợp lệ: {last_err}")
 
     def close(self):

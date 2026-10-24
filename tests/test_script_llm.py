@@ -64,3 +64,11 @@ def test_cue_qua_sat_nhau():
                elements=[{"cue": "cốc nước", "object": "glass of water"}, {"cue": "đồng hồ", "object": "alarm clock"}])
     errors = check([sc])
     assert len(errors) == 1 and "cách nhau 3 từ" in errors[0]
+
+
+def test_chi_con_cue_sat_la_loi_mem():
+    sc = scene(narration="Uống cốc nước cạnh đồng hồ mỗi sáng để cơ thể tỉnh táo và khoẻ mạnh hơn nhé.",
+               elements=[{"cue": "cốc nước", "object": "glass of water"}, {"cue": "đồng hồ", "object": "alarm clock"}])
+    assert sl.only_soft(check([sc]))
+    assert not sl.only_soft(check([sc, scene(narration="ngắn")]))
+    assert not sl.only_soft([])
